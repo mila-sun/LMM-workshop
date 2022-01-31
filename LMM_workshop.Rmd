@@ -1,0 +1,301 @@
+---
+title: "Linear Mixed Model Example: Test Score"
+author: "Mila Sun"
+date: "Winter 2022"
+output: 
+  pdf_document: 
+    number_sections: true
+---
+# Install and load required packages
+```{r,message=FALSE}
+#uncomment and run the following line if you did have these packages installed
+#install.packages(c("nlme","lme4","mlmRev","ggplot2","lattice"))
+
+# load packages
+library(lme4)
+library(nlme)
+library(mlmRev)  #for Exam data
+
+# for data visualization
+library(ggplot2)
+library(lattice)
+```
+
+
+
+# Test score data
+
+
+* 4,059 students in 65 schools
+* Exam scores - one exam per student
+* Correlation -  If there are "high-performing" schools, maybe kids in these schools are more alike
+* Outcome: normalized exam score
+* Covariates:
+    - Sex of the student
+    - Pretest (LR test) score 
+    - School gender (mixed, boys, girls)
+    - School average score
+* All scores are standardized 
+
+# Question of interest
+
+* How does the pretest score affect the exam score?
+    - In individuals
+    - On the school level: are kids in high-performing schools also high-performing in exam scores?
+* How much between-school variability is there?
+* Is there between-school variability in the association between the scores?
+
+
+# Modelling
+## Fit a simple linear model
+
+Fit model: $$y_i = \beta_0 + \beta_1 x_{i} + \epsilon_i$$
+
+```{r, message=FALSE}
+# load built-in data
+data(Exam)
+
+# fit a simple linear model
+m1 = lm(normexam ~ standLRT, data = Exam)
+summary(m1)
+```
+
+\vspace{3mm}
+* \textbf{Fixed coefficients}: $\hat{\beta_0}=-0.0011$ ($se=0.012$) and $\hat{\beta_1}=0.595$ ($se=0.012$)
+* \textbf{Variance of random term (error)}: $\hat{\sigma}^2=0.8054^2$
+
+## Preliminary graphical displays: the effect of schools
+We plot the outcomes across school IDs, you see lots of individual variation, with some schools having relatively higher exam scores and others having relatively lower scores
+
+```{r, fig.height = 3, fig.width = 9, fig.align = "center", message=FALSE}
+ggplot(Exam, aes(school, normexam)) + 
+  geom_boxplot(fill="grey") + 
+  ylab("Normalized exam scores") + 
+  theme_bw() + theme(panel.grid = element_blank()) 
+```
+
+We can check for patterns within and between schools by plotting the response versus the pretest scores by school. The lines denotes simple linear regressions.
+
+```{r, fig.height = 4, fig.width = 9, fig.align = "center", message=FALSE}
+set.seed(202201)
+school_id = sample(unique(Exam$school), size = 10, replace = F)
+Exam_sub = Exam[Exam$school %in% school_id,]
+
+# scatterplots group by school
+xyplot(normexam ~ standLRT | school, data = Exam_sub, type = c("p", "r"))
+
+# another way to display
+ggplot(Exam_sub, aes(x=standLRT, y=normexam)) + 
+  geom_point() + geom_smooth(method="lm", se=FALSE) +
+  facet_wrap(~school, nrow = 2) + theme_bw()
+```
+
+\vspace{3mm}
+Although it is informative to plot the within-school regression lines, we need to assess the variability in the estimates of the coefficients before concluding if there is "significant" variability \textbf{between schools}. We can obtain the individual regression fits with the `lmList` function.
+
+Note: school 48 only has two students taking the exam. Because within-school results based on only two students are unreliable, we will exclude this school from further plots (but we do include these data when fitting comprehensive models)
+
+```{r, fig.height = 5, fig.width = 5, fig.align = "center"}
+m1_lst = lmList(normexam ~ standLRT|school, Exam, subset = school!=48)
+head(coef(m1_lst), n=10) # show the first 10 regression lines
+
+#and compare the confidence intervals on these coefficients.
+ci = intervals(m1_lst)
+plot(ci)
+```
+
+\vspace{3mm}
+The confidence intervals for these separately fitted models indicate differences in the intercepts and the slopes. 
+
+## Fit a random intercept model
+
+We begin with a model that has a random intercept by school plus additive fixed effects for the pretest score: $$y_{ij} = \beta_0 + u_i+\beta_1 x_{ij} + \epsilon_{ij}.$$
+Recall: 
+
+* Random errors $\epsilon_{ij} \sim \mathcal{N}(0,\sigma^2_{\epsilon})$
+* $u_{i}$ is the random intercept for cluster $i$, $u_i\sim \mathcal{N}(0,\sigma^2_{u})$
+
+```{r}
+# mixed model with random intercept
+m2 = lmer(normexam ~ standLRT + (1|school), data = Exam)
+summary(m2)
+```
+
+\vspace{3mm}
+* \textbf{Random intercept variance}: $\hat{\sigma}^2_u=0.0934$
+* \textbf{Error variance}: $\hat{\sigma}^2_{\epsilon}=0.566$
+* \textbf{Fixed effects}: $\hat{\beta_0}=0.002$ ($se=0.040$), $\hat{\beta_1}= 0.566$ ($se=0.012$)
+* $Corr(\hat{\beta}_0,\hat{\beta_1})=0.008$ (not really of interest)
+
+## Fit a random coefficient model
+Our data exploration indicated that the slope may vary by school. We can fit a model with random effects by school for both the slope and the intercept as
+
+$$Y_{ij}=(\beta_0+u_{0i})+(\beta_1+u_{1i}) X_{ij}+\epsilon_{ij}$$
+
+Recall:
+
+* $\epsilon_{ij}\sim\mathcal{N}(0,\sigma^2_{\epsilon})$
+* $u_{0i}\sim\mathcal{N}(0,\sigma^2_{u_0})$
+* $u_{1i}\sim\mathcal{N}(0,\sigma^2_{u_1})$
+
+```{r}
+m3 = lmer(normexam ~ standLRT + (standLRT|school), data = Exam, )
+summary(m3)
+```
+
+\vspace{3mm}
+* \textbf{Random intercept variance}: $\hat{\sigma}^2_{u_0}=0.09212$
+* \textbf{Random slope variance}: $\hat{\sigma}^2_{u_1}=0.01497$
+* \textbf{Error variance}: $\hat{\sigma}^2_{\epsilon}=0.55364$
+
+
+## Model selection
+
+Please be very, very careful when it comes to model selection. Focus on your question, don’t just plug in and drop variables from a model haphazardly until you make something "significant". Always choose variables based on biology/ecology.
+
+First think about your \textbf{experimental design, your system and data collected, as well as your questions}. Then you could use model selection to help you decide:
+
+* AIC and/or BIC
+* likelihood ratio test
+* whether the variance of the random term $\approx$ 0
+    - If $\sigma^2_{u_0}= 0$, this means that all "school-specific" intercepts are the same, which means that there is no variability due to school.
+
+
+```{r}
+# compare m3 to the previous fit m2 with
+anova(m2, m3)
+```
+
+There is a strong evidence of a significant random effect for the slope by school, whether judged by AIC, BIC or the p-value for the likelihood ratio test.
+
+
+Example with too small variance: add a fix and a random effect for the student’s sex by school. Notice that the estimate of the variance of the `sex` term is essentially zero so there is no need to test the significance of this variance component.
+```{r, message=FALSE}
+m4 = lmer(normexam ~ standLRT + sex+ (standLRT+sex|school), data = Exam)
+summary(m4)
+```
+
+# Visualizing random effects
+
+Examines the random effects (i.e things that are allowed to vary across schools, in this case each represents school-level effect of standLRT for our first 10 schools)
+
+```{r}
+# The varying intercepts and slopes for each subject can be viewed by
+ranef(m3)$school[1:10,]
+```
+
+Note: `ranef()` gives the conditional modes conditional on $Y$. You can think of these as school-level effects, i.e. how much does any school differ from the population?
+
+```{r, fig.height = 5, fig.width = 5, fig.align = "center"}
+# The error bars represent 95% confidence intervals.
+print(dotplot(ranef(m3,condVar=TRUE)))
+```
+
+# Check model assumptions
+
+* For a linear mixed model, the assumptions are
+    - Linearity: the explanatory variables are related linearly to the response
+    - $u_{0i}\sim\mathcal{N}(0,\sigma^2_{u_0})$, independent of each other
+    - $u_{1i}\sim\mathcal{N}(0,\sigma^2_{u_1})$, independent of each other
+    - $\epsilon_{ij}\sim\mathcal{N}(0,\sigma^2_{\epsilon})$, independent of each other and of $u_i$'s
+* Note: how to compute residuals $\epsilon_{ij}$:
+$$\hat{\epsilon}_{ij}=y_{ij}-\hat{\beta_0}-\hat{u}_{0i}-(\hat{\beta_1}+\hat{u}_{1i})X_{ij}$$
+* In R:
+    - $\epsilon$'s are called the "school residuals"
+    - $y_{ij}-\hat{\beta_0}-\hat{\beta_1}X_{ij}$ are called the "fixed" residuals
+
+
+
+## Linearity
+Graphically, plotting the model residuals against the response is one simple way to test and looking for any systematic shape. If an obvious pattern emerges, a higher order term may need to be included or you may need to mathematically transform a predictor/response. 
+```{r, out.width="50%", fig.align = "center"}
+plot(resid(m3), Exam$normexam, pch=19, cex=0.5)
+```
+
+## Check normality, independence and constant variance assumptions
+
+Note: 
+
+* `fitted()` computes $\beta_0 + u_{0i}+ (\beta_1 + u_{1i})x_{ij}$
+* A Q-Q plot or histogram of the residuals
+* Plotting the residuals against the fitted values will indicate if there is non-constant error variance, i.e. if the variance increases with the mean, the residuals will fan out as the fitted value increases. Usually transforming the data, or using another distribution will help.
+
+```{r, out.width="50%", fig.align = "center"}
+# check the normality assumption of the residuals
+hist(residuals(m3), main = "Histogram of the residuals", xlab = "epsilon")
+qqnorm(residuals(m3, type="pearson"))
+qqline(residuals(m3, type="pearson"))
+
+#or simply just run
+#qqmath(m3)
+
+# check the constant variance and independence assumption
+plot(m3, main="Fitted values versus residuals")
+plot(Exam$standLRT, residuals(m3, type="pearson"), ylab="residuals", main="Residuals against fixed effects predictors")
+
+#The even spread of the residuals suggest that the model is a good fit for the data.
+
+
+# check the normality of the random effects
+ranef_m3 = ranef(m3)$school
+
+hist(ranef_m3[,1], main = "Histogram of the random intercepts", xlab = "u_0") 
+qqnorm(ranef_m3$`(Intercept)`)
+qqline(ranef_m3$`(Intercept)`)
+
+hist(ranef_m3[,2], main = "Histogram of the random slopes", xlab = "u_1") 
+qqnorm(ranef_m3$standLRT)
+qqline(ranef_m3$standLRT)
+
+# check the constant variance of the random effects
+ranef_m3$school_id = unique(Exam$school)
+plot(as.factor(ranef_m3$school_id), ranef_m3$`(Intercept)`, xlab="school", ylab="u0")
+abline(h=0, lty=2)
+plot(as.factor(ranef_m3$school_id), ranef_m3$standLRT, xlab="school", ylab="u1")
+abline(h=0, lty=2)
+```
+
+
+# Parameter interpretation for linear mixed models
+
+Consider model `m3` with both random intercepts and random slopes:
+$$y_{ij} = (\beta_0+u_{0i})+(\beta_1+u_{1i}) x_{ij}+\epsilon_{ij}.$$
+
+Then
+$$E[Y|u_{0}, u_{1}, X] = (\beta_0+u_{0})+(\beta_1+u_{1}) X,$$
+and the marginal model is 
+$$E[Y|X] = \beta_0+\beta_1 X.$$
+So:
+
+* $\beta_0$ is the expected response at $X=0$ (which is the mean pretest score)
+* $\beta_1$ is the expected change in response for a unit increase in $X$
+* These expectations are with respect to the distribution of random effects and are averages across the population of individuals
+
+For a generic individual (i.e., nested within school in our example)
+
+* $\beta_0+u_0$ is the expected response at $X=0$ 
+* $\beta_1+u_1$ is the expected change in response for a unit increase in $X$
+* In a linear model, an alternative interpretation is that $\beta_1$ is the change in response for a unit change in $X$ for a "typical" school with $u_1=0$.
+
+
+```{r, fig.height = 4, fig.width = 9, fig.align = "center", message=FALSE, echo=FALSE, eval=FALSE}
+id_lst = c(14,41,54)
+Exam_example = Exam[Exam$school%in%id_lst,]
+n_lst = with(Exam_example, aggregate(normexam, list(school), length))
+lmer_model = lmer(normexam ~ standLRT+(standLRT|school), Exam_example)
+ranef_lmer = ranef(lmer_model)$school
+fixef_lmer = fixef(lmer_model)
+intercept_lmer = ranef_lmer$`(Intercept)`+fixef_lmer[1]
+slope_lmer = ranef_lmer$standLRT+fixef_lmer[2]
+
+
+par(mfrow=c(1,3))
+for(i in 1:3){
+  with(Exam_example[Exam_example$school==id_lst[i],], plot(standLRT, normexam, cex=0.5, main = paste("school ",id_lst[i],", n=", n_lst$x[i], sep = "")))
+abline(lm(normexam ~ standLRT, Exam_example), col="black", lty=2, lwd=2)
+abline(lm(normexam ~ standLRT, Exam_example[Exam_example$school==id_lst[i],]),col = "blue")
+abline(a=intercept_lmer[i], b=slope_lmer[i], col="red")
+}
+
+```
+
