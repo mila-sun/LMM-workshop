@@ -139,7 +139,7 @@ Recall:
 * $u_{1i}\sim\mathcal{N}(0,\sigma^2_{u_1})$
 
 ```{r}
-m3 = lmer(normexam ~ standLRT + (standLRT|school), data = Exam, )
+m3 = lmer(normexam ~ standLRT + (standLRT|school), data = Exam)
 summary(m3)
 ```
 
