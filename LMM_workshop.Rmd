@@ -144,9 +144,13 @@ summary(m3)
 ```
 
 \vspace{3mm}
-* \textbf{Random intercept variance}: $\hat{\sigma}^2_{u_0}=0.09212$
-* \textbf{Random slope variance}: $\hat{\sigma}^2_{u_1}=0.01497$
+* \textbf{Random intercept variance}: $\hat{\sigma}^2_{u_0}=0.09212$, is the typical deviation in the \textbf{level} of the response
+* \textbf{Random slope variance}: $\hat{\sigma}^2_{u_1}=0.01497$, is the typical deviation in the \textbf{change} in the response
 * \textbf{Error variance}: $\hat{\sigma}^2_{\epsilon}=0.55364$
+* $Corr(u_0, u_1)$ is the correlation between school-specific intercepts and slopes
+    - $=0$ indicates school-specific intercepts and slopes are uncorrelated
+    - $>0$ indicates school with \textbf{high level} have \textbf{high rate} of change
+    - $<0$ indicates school with \textbf{high level} have \textbf{low rate} of change
 
 
 ## Model selection
